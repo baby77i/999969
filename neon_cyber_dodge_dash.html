@@ -1,0 +1,1340 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>霓虹疾速 (Neon Cyber Dodge & Dash)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome 圖示庫 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* 防止手機瀏覽器手勢與拉動刷新 */
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: #030308;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft JhengHei", sans-serif;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* 霓虹發光視覺特效 */
+        .neon-text-cyan {
+            text-shadow: 0 0 8px rgba(6, 182, 212, 0.8), 0 0 20px rgba(6, 182, 212, 0.5);
+        }
+        .neon-text-pink {
+            text-shadow: 0 0 8px rgba(236, 72, 153, 0.8), 0 0 20px rgba(236, 72, 153, 0.5);
+        }
+        .neon-text-yellow {
+            text-shadow: 0 0 8px rgba(250, 204, 21, 0.8), 0 0 20px rgba(250, 204, 21, 0.5);
+        }
+        .neon-box-cyan {
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.5), inset 0 0 15px rgba(6, 182, 212, 0.2);
+            border: 1px solid rgba(6, 182, 212, 0.8);
+        }
+        .neon-box-pink {
+            box-shadow: 0 0 15px rgba(236, 72, 153, 0.5), inset 0 0 15px rgba(236, 72, 153, 0.2);
+            border: 1px solid rgba(236, 72, 153, 0.8);
+        }
+
+        /* 毛玻璃質感彈窗面板 */
+        .glass-panel {
+            background: rgba(10, 11, 26, 0.88);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        /* 畫面震撼抖動動畫 */
+        @keyframes screenShake {
+            0% { transform: translate(0, 0); }
+            20% { transform: translate(-6px, 4px); }
+            40% { transform: translate(6px, -4px); }
+            60% { transform: translate(-4px, -2px); }
+            80% { transform: translate(4px, 2px); }
+            100% { transform: translate(0, 0); }
+        }
+        .shake {
+            animation: screenShake 0.25s ease-in-out;
+        }
+
+        /* CD 環形冷卻遮罩 */
+        .cooldown-overlay {
+            background: rgba(0, 0, 0, 0.65);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center relative select-none">
+
+    <!-- 遊戲主容器（自適應手機螢幕比例） -->
+    <div id="game-container" class="relative w-full h-full max-w-md mx-auto overflow-hidden bg-black shadow-2xl flex flex-col justify-center items-center">
+        
+        <!-- 繪圖 Canvas -->
+        <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+
+        <!-- 遊戲中 HUD 抬頭顯示資訊 -->
+        <div id="hud" class="absolute top-0 left-0 w-full p-4 pointer-events-none flex justify-between items-start z-10 hidden">
+            <!-- 左側：得分與連擊 -->
+            <div class="flex flex-col gap-1">
+                <div class="text-[10px] text-cyan-400 font-bold tracking-widest uppercase">目前分數</div>
+                <div id="hud-score" class="text-2xl font-black text-white neon-text-cyan">0</div>
+                <div class="flex items-center gap-1 mt-0.5">
+                    <span id="hud-combo" class="text-xs font-extrabold px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-400 border border-pink-500/40">1x 連擊</span>
+                </div>
+            </div>
+
+            <!-- 右側：鑽石數與波數 -->
+            <div class="flex flex-col items-end gap-1">
+                <div class="flex items-center gap-1 text-yellow-400 font-black text-base">
+                    <i class="fa-solid fa-gem text-xs"></i>
+                    <span id="hud-gems">0</span>
+                </div>
+                <div id="hud-level" class="text-xs text-purple-400 font-bold uppercase tracking-wider mt-0.5">第 1 波</div>
+                <!-- 道具啟用指示器 -->
+                <div id="hud-powerup" class="text-[10px] font-bold px-2 py-1 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 hidden mt-1">
+                    道具生效中
+                </div>
+            </div>
+            
+            <!-- 暫停按鈕 -->
+            <button id="btn-pause" class="pointer-events-auto absolute top-4 left-1/2 -translate-x-1/2 w-10 h-10 rounded-full bg-slate-900/80 border border-slate-700/80 flex items-center justify-center text-white active:scale-90 transition-transform">
+                <i class="fa-solid fa-pause text-sm"></i>
+            </button>
+        </div>
+
+        <!-- 手機觸控捷徑按鈕組 (Dash 衝刺與技能) -->
+        <div id="touch-controls" class="absolute bottom-6 left-0 right-0 px-5 pointer-events-none flex justify-between items-end z-10 hidden">
+            <!-- 操作指引提示 -->
+            <div class="text-[11px] text-slate-400 font-medium bg-black/60 backdrop-blur px-3 py-1.5 rounded-full border border-slate-800 flex items-center gap-1.5">
+                <i class="fa-solid fa-hand-pointer text-cyan-400"></i> 滑動控制飛船 (防遮擋)
+            </div>
+
+            <!-- 右下角技能快捷鍵容器 -->
+            <div class="flex items-center gap-3 pointer-events-auto">
+                <!-- 釋放儲存技能按鈕 -->
+                <div class="relative">
+                    <button id="btn-skill" class="w-12 h-12 rounded-full bg-slate-800/90 border border-cyan-500/50 text-cyan-300 flex flex-col items-center justify-center active:scale-90 transition-transform disabled:opacity-40">
+                        <i id="skill-icon" class="fa-solid fa-shield-halved text-base"></i>
+                    </button>
+                    <!-- 主動技能計數或提示 -->
+                    <span id="skill-badge" class="absolute -top-1 -right-1 bg-cyan-500 text-black text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center hidden">1</span>
+                </div>
+
+                <!-- Dash 高速衝刺按鈕 -->
+                <div class="relative">
+                    <button id="btn-dash" class="w-16 h-16 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 text-white font-black shadow-lg shadow-pink-500/40 active:scale-90 transition-transform flex flex-col items-center justify-center border border-pink-300">
+                        <i class="fa-solid fa-bolt text-lg"></i>
+                        <span class="text-[9px] font-black uppercase tracking-wider">衝刺</span>
+                    </button>
+                    <!-- Dash 冷卻遮罩 -->
+                    <div id="dash-cd-overlay" class="absolute inset-0 rounded-full cooldown-overlay flex items-center justify-center text-xs font-black text-white hidden">
+                        <span id="dash-cd-text">5s</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 音效切換浮動按鈕 -->
+        <button id="btn-audio-toggle" class="absolute top-4 right-4 z-30 w-10 h-10 rounded-full bg-slate-900/80 border border-slate-700 text-cyan-400 flex items-center justify-center active:scale-90">
+            <i id="audio-icon" class="fa-solid fa-volume-high"></i>
+        </button>
+
+        <!-- 主選單畫面 -->
+        <div id="menu-screen" class="absolute inset-0 z-20 glass-panel flex flex-col justify-between p-6 text-center">
+            <div class="mt-6 flex flex-col items-center">
+                <div class="text-cyan-400 text-[10px] font-black tracking-widest uppercase mb-1">CYBER ARCADE 2026</div>
+                <h1 class="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-pink-500 to-yellow-400 neon-text-cyan leading-tight">
+                    霓虹疾速<br/><span class="text-xl tracking-wider font-extrabold text-pink-400">NEON DASH</span>
+                </h1>
+                <p class="text-slate-400 text-xs mt-2 max-w-xs">極速極限閃避：收集能量寶石，釋放超能衝刺與全螢幕技能！</p>
+            </div>
+
+            <!-- 當前戰機預覽卡片 -->
+            <div class="my-2 bg-slate-900/70 p-3.5 rounded-2xl border border-cyan-500/30 flex flex-col items-center relative">
+                <div class="text-[10px] text-slate-400 mb-1 uppercase font-bold tracking-wider">當前選擇戰機</div>
+                <div id="ship-preview" class="w-16 h-16 my-1 flex items-center justify-center">
+                    <!-- SVG 動態注入 -->
+                </div>
+                <div id="ship-preview-name" class="text-sm font-black text-white mt-1">霓虹向量號</div>
+                
+                <!-- 戰機數值顯示 -->
+                <div class="grid grid-cols-3 gap-1.5 w-full mt-2.5 text-[10px] text-slate-300">
+                    <div class="bg-black/50 p-1.5 rounded border border-slate-800">飛行速度<br/><span id="stat-speed" class="text-cyan-400 font-extrabold">100%</span></div>
+                    <div class="bg-black/50 p-1.5 rounded border border-slate-800">磁石吸力<br/><span id="stat-magnet" class="text-pink-400 font-extrabold">1.0x</span></div>
+                    <div class="bg-black/50 p-1.5 rounded border border-slate-800">護盾時間<br/><span id="stat-shield" class="text-purple-400 font-extrabold">3 秒</span></div>
+                </div>
+                
+                <button id="btn-open-hangar" class="mt-2.5 text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-bold active:scale-95">
+                    <i class="fa-solid fa-plane-up"></i> 前往軍備庫 / 解鎖戰機
+                </button>
+            </div>
+
+            <!-- 個人紀錄與鑽石看板 -->
+            <div class="flex justify-around bg-black/50 py-2.5 rounded-xl border border-slate-800 text-xs">
+                <div>
+                    <span class="text-slate-400 block text-[10px]">歷史最高分</span>
+                    <span id="menu-high-score" class="font-black text-cyan-400 text-base">0</span>
+                </div>
+                <div class="w-px bg-slate-800"></div>
+                <div>
+                    <span class="text-slate-400 block text-[10px]">累積寶石</span>
+                    <span id="menu-total-gems" class="font-black text-yellow-400 text-base">0</span>
+                </div>
+            </div>
+
+            <!-- 功能按鈕群 -->
+            <div class="flex flex-col gap-2 mb-2">
+                <button id="btn-start" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 via-pink-500 to-purple-600 text-white font-black text-lg shadow-lg shadow-pink-500/30 neon-box-pink active:scale-95 transition-transform uppercase tracking-wider">
+                    <i class="fa-solid fa-play mr-1.5"></i> 開始遊戲
+                </button>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="btn-rules" class="py-2.5 rounded-lg bg-slate-800/90 text-slate-300 text-xs font-bold border border-slate-700 active:scale-95">
+                        <i class="fa-solid fa-book-open mr-1"></i> 遊戲規則
+                    </button>
+                    <button id="btn-achievements" class="py-2.5 rounded-lg bg-slate-800/90 text-xs text-yellow-400 font-bold border border-slate-700 active:scale-95">
+                        <i class="fa-solid fa-trophy mr-1"></i> 成就記錄
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 戰機軍備庫彈窗 (機庫商店) -->
+        <div id="hangar-modal" class="absolute inset-0 z-30 glass-panel hidden flex-col p-5 justify-between">
+            <div>
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-lg font-black text-cyan-400 tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-warehouse"></i> 霓虹戰機軍備庫
+                    </h2>
+                    <button id="btn-close-hangar" class="text-slate-400 text-xl p-1 active:scale-90"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <p class="text-[11px] text-slate-400 mb-3">收集遊戲中掉落的能量寶石，解鎖具備特化屬性的戰機：</p>
+                
+                <!-- 戰機列表容器 -->
+                <div id="ships-list" class="flex flex-col gap-2.5 max-h-[58vh] overflow-y-auto pr-1">
+                    <!-- 動態渲染戰機卡片 -->
+                </div>
+            </div>
+            
+            <div class="bg-black/40 p-2.5 rounded-lg border border-slate-800 text-[11px] text-slate-400 text-center">
+                提示：每款戰機具備不同的基礎數值與碰撞範圍！
+            </div>
+        </div>
+
+        <!-- 遊戲規則 modal -->
+        <div id="rules-modal" class="absolute inset-0 z-30 glass-panel hidden flex-col p-5 justify-between">
+            <div>
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-lg font-black text-pink-400 tracking-wider">遊戲規則與指南</h2>
+                    <button id="btn-close-rules" class="text-slate-400 text-xl p-1 active:scale-90"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="space-y-2.5 text-xs text-slate-300 overflow-y-auto max-h-[62vh] pr-1">
+                    <div class="bg-black/50 p-3 rounded-xl border border-slate-800">
+                        <div class="font-bold text-cyan-400 mb-1"><i class="fa-solid fa-hand-pointer mr-1"></i> 操作方式</div>
+                        <p class="text-slate-300 text-[11px] leading-relaxed">按住螢幕任意位置拖曳即可控制戰機移動。飛船會自動保持在手指上方（防遮擋 Offset）。點擊右下角 <span class="text-pink-400 font-bold">衝刺 (Dash)</span> 可短暫無敵並快速推進！</p>
+                    </div>
+                    <div class="bg-black/50 p-3 rounded-xl border border-slate-800">
+                        <div class="font-bold text-yellow-400 mb-1"><i class="fa-solid fa-gem mr-1"></i> 連擊與得分</div>
+                        <p class="text-slate-300 text-[11px] leading-relaxed">連續收集黃色能量寶石可累積 Combo 倍率（最高 5 倍分數）。若錯失寶石或遭受攻擊將會重置連擊數！</p>
+                    </div>
+                    <div class="bg-black/50 p-3 rounded-xl border border-slate-800">
+                        <div class="font-bold text-purple-400 mb-1"><i class="fa-solid fa-bolt mr-1"></i> 戰術道具</div>
+                        <ul class="list-disc list-inside space-y-1 text-slate-300 text-[11px]">
+                            <li><span class="text-blue-400 font-bold">藍色護盾</span>：抵擋一次致命撞擊</li>
+                            <li><span class="text-purple-400 font-bold">紫色時光</span>：減緩時間流速 5 秒</li>
+                            <li><span class="text-yellow-400 font-bold">黃色磁石</span>：強力吸附全畫面寶石</li>
+                            <li><span class="text-red-400 font-bold">紅色炸彈</span>：清空全畫面威脅障礙</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <button id="btn-understand-rules" class="w-full py-3 bg-cyan-600 text-white font-bold rounded-xl mt-2 active:scale-95">我瞭解了</button>
+        </div>
+
+        <!-- 成就記錄 MODAL -->
+        <div id="achievements-modal" class="absolute inset-0 z-30 glass-panel hidden flex-col p-5 justify-between">
+            <div>
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-lg font-black text-yellow-400 tracking-wider"><i class="fa-solid fa-trophy mr-1"></i> 成就記錄</h2>
+                    <button id="btn-close-achievements" class="text-slate-400 text-xl p-1 active:scale-90"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div id="achievements-list" class="space-y-2 text-xs overflow-y-auto max-h-[62vh] pr-1">
+                    <!-- 動態渲染成就內容 -->
+                </div>
+            </div>
+            <button id="btn-close-achievements-2" class="w-full py-2.5 bg-slate-800 text-slate-300 font-bold rounded-xl mt-2 active:scale-95">關閉</button>
+        </div>
+
+        <!-- 暫停選單 -->
+        <div id="pause-modal" class="absolute inset-0 z-20 glass-panel hidden flex-col justify-center items-center p-6 text-center">
+            <h2 class="text-3xl font-black text-cyan-400 mb-6 neon-text-cyan">遊戲暫停</h2>
+            <div class="flex flex-col gap-3 w-48">
+                <button id="btn-resume" class="py-3 rounded-xl bg-cyan-500 text-black font-black active:scale-95 uppercase tracking-wider">繼續遊戲</button>
+                <button id="btn-restart-pause" class="py-3 rounded-xl bg-slate-800 text-white border border-slate-600 font-bold active:scale-95">重新開始</button>
+                <button id="btn-quit-pause" class="py-3 rounded-xl bg-slate-900 text-slate-400 font-bold active:scale-95">返回主選單</button>
+            </div>
+        </div>
+
+        <!-- 結算畫面 (GAME OVER) -->
+        <div id="gameover-modal" class="absolute inset-0 z-20 glass-panel hidden flex-col justify-between p-6 text-center">
+            <div class="mt-4">
+                <div class="text-red-500 font-black text-xs tracking-widest uppercase mb-1 animate-pulse">SYSTEM CRASHED</div>
+                <h2 class="text-3xl font-black text-red-500 neon-text-pink">戰機毀損 (Game Over)</h2>
+            </div>
+
+            <!-- 數據統計結算報告 -->
+            <div class="bg-black/60 p-4.5 rounded-2xl border border-pink-500/30 my-auto text-left space-y-2.5">
+                <div class="flex justify-between items-center pb-2 border-b border-slate-800">
+                    <span class="text-slate-400 text-xs">本次得分</span>
+                    <span id="go-score" class="text-2xl font-black text-cyan-400">0</span>
+                </div>
+                <div class="flex justify-between items-center text-xs">
+                    <span class="text-slate-400">歷史最高分</span>
+                    <span id="go-high" class="font-bold text-white">0</span>
+                </div>
+                <div class="flex justify-between items-center text-xs">
+                    <span class="text-slate-400">本次獲取寶石</span>
+                    <span id="go-gems" class="font-bold text-yellow-400">+0</span>
+                </div>
+                <div class="flex justify-between items-center text-xs">
+                    <span class="text-slate-400">最高 Combo 連擊</span>
+                    <span id="go-combo" class="font-bold text-pink-400">1x</span>
+                </div>
+                <div class="flex justify-between items-center text-xs">
+                    <span class="text-slate-400">堅持生存波數</span>
+                    <span id="go-wave" class="font-bold text-purple-400">第 1 波</span>
+                </div>
+            </div>
+
+            <!-- 結算頁按鈕 -->
+            <div class="flex flex-col gap-2 mb-2">
+                <button id="btn-retry" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 text-white font-black text-lg shadow-lg shadow-pink-500/30 neon-box-pink active:scale-95 transition-transform uppercase tracking-wider">
+                    <i class="fa-solid fa-rotate-right mr-1.5"></i> 再次挑戰
+                </button>
+                <button id="btn-go-menu" class="w-full py-2.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold active:scale-95">
+                    <i class="fa-solid fa-house mr-1"></i> 返回主選單
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 遊戲音效引擎與核心邏輯 -->
+    <script>
+        /* --- Web Audio API 音效合成器 --- */
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            // 吃寶石音效 (高音階雙頻聲)
+            playGemSound() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.exponentialRampToValueAtTime(1760, now + 0.08);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.08);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.08);
+            }
+
+            // 獲得道具音效
+            playPowerupSound() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(350, now);
+                osc.frequency.exponentialRampToValueAtTime(950, now + 0.25);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.25);
+            }
+
+            // 爆炸撞擊音效 (低音鉅齒波)
+            playExplosion() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(130, now);
+                osc.frequency.exponentialRampToValueAtTime(25, now + 0.35);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.35);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.35);
+            }
+
+            // Dash 衝刺音效
+            playDashSound() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(220, now);
+                osc.frequency.exponentialRampToValueAtTime(700, now + 0.15);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.15);
+            }
+        }
+
+        const audio = new SoundEngine();
+
+        /* --- 戰機庫資料 --- */
+        const SHIPS_DATA = [
+            { id: 'ship_vector', name: '霓虹向量號', price: 0, speed: 1.0, magnet: 1.0, shieldTime: 3, color: '#06b6d4', unlocked: true, desc: '平衡型基礎戰機，適合熟悉操控。' },
+            { id: 'ship_phantom', name: '幻影疾鋒號', price: 120, speed: 1.35, magnet: 1.1, shieldTime: 3, color: '#ec4899', unlocked: false, desc: '極速型戰機，移動速度提升 35%。' },
+            { id: 'ship_magneto', name: '磁光領航者', price: 280, speed: 1.0, magnet: 2.2, shieldTime: 4, color: '#eab308', unlocked: false, desc: '磁吸型戰機，擁有 2.2 倍基礎寶石吸附範圍。' },
+            { id: 'ship_titan', name: '極光泰坦', price: 600, speed: 1.15, magnet: 1.4, shieldTime: 6, color: '#a855f7', unlocked: false, desc: '重裝防衛型戰機，護盾時間可維持 6 秒。' }
+        ];
+
+        /* --- 成就資料系統 --- */
+        const ACHIEVEMENTS_DATA = [
+            { id: 'ach_first_run', title: '初次試飛', desc: '完成 1 局遊戲', key: 'runs', target: 1 },
+            { id: 'ach_gems_50', title: '寶石獵人', desc: '累積獲得 50 顆寶石', key: 'gems', target: 50 },
+            { id: 'ach_score_1000', title: '千分達人', desc: '單局得分突破 1000 分', key: 'score', target: 1000 },
+            { id: 'ach_combo_20', title: '連擊大師', desc: '達成 20 次 Combo 連擊', key: 'combo', target: 20 }
+        ];
+
+        /* --- 全局狀態變數 --- */
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = 0;
+        let height = 0;
+
+        let gameState = 'MENU'; // MENU, PLAYING, PAUSED, GAMEOVER
+        let score = 0;
+        let highScore = parseInt(localStorage.getItem('neon_high_score') || '0');
+        let totalGems = parseInt(localStorage.getItem('neon_gems') || '0');
+        let totalRuns = parseInt(localStorage.getItem('neon_runs') || '0');
+        let currentGemsCount = 0;
+        let comboCount = 0;
+        let maxCombo = 1;
+        let wave = 1;
+        let gameTime = 0;
+
+        // 當前選擇戰機
+        let activeShip = SHIPS_DATA[0];
+
+        // 玩家實體屬性
+        let player = {
+            x: 0,
+            y: 0,
+            radius: 15,
+            targetX: 0,
+            targetY: 0,
+            hasShield: false,
+            shieldTimer: 0,
+            dashCooldown: 0,
+            dashMaxCD: 300, // 5秒
+            isDashing: false,
+            dashTimer: 0,
+            storedSkill: null // 儲存獲得的主動道具
+        };
+
+        // 道具運作計時
+        let slowMoTimer = 0;
+        let magnetTimer = 0;
+
+        // 動態物件陣列
+        let obstacles = [];
+        let gems = [];
+        let powerups = [];
+        let particles = [];
+        let stars = [];
+
+        // 觸控拖曳控制
+        let isTouching = false;
+
+        /* --- 螢幕與 Canvas 自適應調整 --- */
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            width = container.clientWidth;
+            height = container.clientHeight;
+            canvas.width = width;
+            canvas.height = height;
+
+            if (player.x === 0 && player.y === 0) {
+                player.x = width / 2;
+                player.y = height * 0.78;
+                player.targetX = player.x;
+                player.targetY = player.y;
+            }
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        /* --- 本地存取 localStorage 管理 --- */
+        function loadSavedProgress() {
+            const savedUnlocked = JSON.parse(localStorage.getItem('neon_unlocked_ships') || '["ship_vector"]');
+            SHIPS_DATA.forEach(s => {
+                s.unlocked = savedUnlocked.includes(s.id);
+            });
+            const savedShipId = localStorage.getItem('neon_selected_ship');
+            const found = SHIPS_DATA.find(s => s.id === savedShipId && s.unlocked);
+            if (found) activeShip = found;
+
+            updateMenuUI();
+        }
+
+        function saveProgress() {
+            localStorage.setItem('neon_high_score', highScore.toString());
+            localStorage.setItem('neon_gems', totalGems.toString());
+            localStorage.setItem('neon_runs', totalRuns.toString());
+            const unlockedIds = SHIPS_DATA.filter(s => s.unlocked).map(s => s.id);
+            localStorage.setItem('neon_unlocked_ships', JSON.stringify(unlockedIds));
+            localStorage.setItem('neon_selected_ship', activeShip.id);
+        }
+
+        /* --- 背景流星星空初始化 --- */
+        function initStars() {
+            stars = [];
+            for (let i = 0; i < 50; i++) {
+                stars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    size: Math.random() * 2 + 0.5,
+                    speed: Math.random() * 2.5 + 1,
+                    alpha: Math.random() * 0.8 + 0.2
+                });
+            }
+        }
+        initStars();
+
+        /* --- 手機觸控與滑鼠操作事件（含防遮擋 Offset） --- */
+        function handlePointerMove(e) {
+            if (gameState !== 'PLAYING') return;
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            // 加入指尖向上偏移量 (Offset = 38px)，避免手機手指遮住飛船本體
+            player.targetX = clientX - rect.left;
+            player.targetY = (clientY - rect.top) - 38; 
+        }
+
+        canvas.addEventListener('touchstart', (e) => {
+            audio.init();
+            isTouching = true;
+            handlePointerMove(e);
+        }, { passive: true });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (isTouching) handlePointerMove(e);
+        }, { passive: true });
+
+        canvas.addEventListener('touchend', () => { isTouching = false; });
+        canvas.addEventListener('mousedown', (e) => {
+            audio.init();
+            isTouching = true;
+            handlePointerMove(e);
+        });
+        canvas.addEventListener('mousemove', (e) => {
+            if (isTouching) handlePointerMove(e);
+        });
+        canvas.addEventListener('mouseup', () => { isTouching = false; });
+
+        // 觸控 Dash 衝刺按鈕
+        document.getElementById('btn-dash').addEventListener('click', (e) => {
+            e.stopPropagation();
+            triggerDash();
+        });
+
+        // 技能快捷按鈕
+        document.getElementById('btn-skill').addEventListener('click', (e) => {
+            e.stopPropagation();
+            useStoredSkill();
+        });
+
+        function triggerDash() {
+            if (gameState === 'PLAYING' && player.dashCooldown <= 0) {
+                player.isDashing = true;
+                player.dashTimer = 18; // ~0.3 秒無敵衝刺
+                player.dashCooldown = player.dashMaxCD;
+                audio.playDashSound();
+                createExplosion(player.x, player.y, activeShip.color, 16);
+            }
+        }
+
+        function useStoredSkill() {
+            if (gameState === 'PLAYING' && player.storedSkill) {
+                applyPowerup(player.storedSkill);
+                player.storedSkill = null;
+                updateSkillButtonUI();
+            }
+        }
+
+        function updateSkillButtonUI() {
+            const btn = document.getElementById('btn-skill');
+            const badge = document.getElementById('skill-badge');
+            const icon = document.getElementById('skill-icon');
+
+            if (player.storedSkill) {
+                btn.disabled = false;
+                badge.classList.remove('hidden');
+                if (player.storedSkill === 'bomb') icon.className = 'fa-solid fa-bomb text-red-400';
+                if (player.storedSkill === 'shield') icon.className = 'fa-solid fa-shield-halved text-cyan-400';
+                if (player.storedSkill === 'slowmo') icon.className = 'fa-solid fa-hourglass-half text-purple-400';
+                if (player.storedSkill === 'magnet') icon.className = 'fa-solid fa-magnet text-yellow-400';
+            } else {
+                btn.disabled = true;
+                badge.classList.add('hidden');
+                icon.className = 'fa-solid fa-hand-sparkles text-slate-500';
+            }
+        }
+
+        /* --- 遊戲主循環與邏輯更新 --- */
+        let lastTime = performance.now();
+
+        function gameLoop(now) {
+            const dt = Math.min((now - lastTime) / 1000, 0.1);
+            lastTime = now;
+
+            update(dt);
+            render();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function update(dt) {
+            // 背景星空流動
+            stars.forEach(s => {
+                s.y += s.speed * (slowMoTimer > 0 ? 0.3 : 1.0);
+                if (s.y > height) {
+                    s.y = 0;
+                    s.x = Math.random() * width;
+                }
+            });
+
+            if (gameState !== 'PLAYING') return;
+
+            gameTime += dt;
+            wave = 1 + Math.floor(gameTime / 12); // 每 12 秒提升一個波數
+
+            // 戰機平滑平移跟隨指尖
+            const lerpFactor = 16 * activeShip.speed * dt;
+            player.x += (player.targetX - player.x) * Math.min(lerpFactor, 1);
+            player.y += (player.targetY - player.y) * Math.min(lerpFactor, 1);
+
+            // 限制飛船在邊界內
+            player.x = Math.max(player.radius, Math.min(width - player.radius, player.x));
+            player.y = Math.max(player.radius, Math.min(height - player.radius, player.y));
+
+            // 冷卻與狀態時間計算
+            if (player.dashCooldown > 0) {
+                player.dashCooldown -= dt * 60;
+                updateDashCDUI();
+            }
+            if (player.isDashing) {
+                player.dashTimer--;
+                if (player.dashTimer <= 0) player.isDashing = false;
+            }
+            if (slowMoTimer > 0) slowMoTimer -= dt;
+            if (magnetTimer > 0) magnetTimer -= dt;
+
+            // 障礙物與道具生成率（隨波數增加）
+            const speedMultiplier = slowMoTimer > 0 ? 0.4 : (1 + wave * 0.12);
+
+            // 生成障礙物（隕石/雷射網）
+            if (Math.random() < 0.045 * (1 + wave * 0.12)) {
+                spawnObstacle();
+            }
+
+            // 生成能量寶石
+            if (Math.random() < 0.035) {
+                gems.push({
+                    x: Math.random() * (width - 30) + 15,
+                    y: -20,
+                    radius: 7,
+                    speed: (Math.random() * 2 + 2) * speedMultiplier
+                });
+            }
+
+            // 生成戰術道具
+            if (Math.random() < 0.0035) {
+                const types = ['shield', 'slowmo', 'magnet', 'bomb'];
+                powerups.push({
+                    type: types[Math.floor(Math.random() * types.length)],
+                    x: Math.random() * (width - 40) + 20,
+                    y: -20,
+                    radius: 12,
+                    speed: 2.2 * speedMultiplier
+                });
+            }
+
+            // 更新障礙物邏輯
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                obs.y += obs.speed * speedMultiplier;
+                obs.rotation += obs.rotSpeed;
+
+                // 追蹤敵機移動軌跡
+                if (obs.type === 'chaser') {
+                    obs.x += (player.x - obs.x) * 0.015;
+                }
+
+                // 碰撞檢測
+                const dist = Math.hypot(player.x - obs.x, player.y - obs.y);
+                if (dist < player.radius + obs.radius) {
+                    if (player.isDashing) {
+                        // Dash 衝刺無敵撞碎障礙物
+                        triggerScreenShake();
+                        createExplosion(obs.x, obs.y, '#ff4444', 12);
+                        obstacles.splice(i, 1);
+                        score += 50;
+                        continue;
+                    } else if (player.hasShield) {
+                        // 護盾抵擋撞擊
+                        player.hasShield = false;
+                        triggerScreenShake();
+                        createExplosion(obs.x, obs.y, '#06b6d4', 20);
+                        obstacles.splice(i, 1);
+                        audio.playExplosion();
+                        continue;
+                    } else {
+                        // 撞擊墜毀 Game Over
+                        triggerGameOver();
+                        return;
+                    }
+                }
+
+                if (obs.y > height + 40) obstacles.splice(i, 1);
+            }
+
+            // 更新寶石邏輯
+            const magnetRadius = magnetTimer > 0 ? 280 : 70 * activeShip.magnet;
+            for (let i = gems.length - 1; i >= 0; i--) {
+                const g = gems[i];
+
+                // 磁鐵吸附邏輯
+                const distToPlayer = Math.hypot(player.x - g.x, player.y - g.y);
+                if (distToPlayer < magnetRadius) {
+                    const angle = Math.atan2(player.y - g.y, player.x - g.x);
+                    g.x += Math.cos(angle) * 9;
+                    g.y += Math.sin(angle) * 9;
+                } else {
+                    g.y += g.speed;
+                }
+
+                // 吃到寶石
+                if (distToPlayer < player.radius + g.radius) {
+                    comboCount++;
+                    if (comboCount > maxCombo) maxCombo = comboCount;
+                    const multiplier = Math.min(Math.floor(comboCount / 5) + 1, 5);
+                    score += 10 * multiplier;
+                    currentGemsCount++;
+                    audio.playGemSound();
+                    createExplosion(g.x, g.y, '#facc15', 8);
+                    gems.splice(i, 1);
+                    updateHUD();
+                    continue;
+                }
+
+                if (g.y > height + 20) {
+                    // 遺漏寶石不會死亡，但重置 Combo
+                    comboCount = 0;
+                    updateHUD();
+                    gems.splice(i, 1);
+                }
+            }
+
+            // 更新拾取道具
+            for (let i = powerups.length - 1; i >= 0; i--) {
+                const p = powerups[i];
+                p.y += p.speed;
+
+                const distToPlayer = Math.hypot(player.x - p.x, player.y - p.y);
+                if (distToPlayer < player.radius + p.radius) {
+                    // 若無儲存技能則存入快捷鍵，否則直接觸發
+                    if (!player.storedSkill) {
+                        player.storedSkill = p.type;
+                        updateSkillButtonUI();
+                        audio.playPowerupSound();
+                    } else {
+                        applyPowerup(p.type);
+                        audio.playPowerupSound();
+                    }
+                    createExplosion(p.x, p.y, '#a855f7', 15);
+                    powerups.splice(i, 1);
+                    continue;
+                }
+
+                if (p.y > height + 20) powerups.splice(i, 1);
+            }
+
+            // 更新粒子系統
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= p.decay;
+                if (p.alpha <= 0) particles.splice(i, 1);
+            }
+
+            // 即時得分UI更新
+            document.getElementById('hud-score').innerText = score;
+        }
+
+        /* --- 衝刺冷卻 UI 更新 --- */
+        function updateDashCDUI() {
+            const cdOverlay = document.getElementById('dash-cd-overlay');
+            const cdText = document.getElementById('dash-cd-text');
+            if (player.dashCooldown > 0) {
+                cdOverlay.classList.remove('hidden');
+                const remainingSec = Math.ceil(player.dashCooldown / 60);
+                cdText.innerText = `${remainingSec}s`;
+            } else {
+                cdOverlay.classList.add('hidden');
+            }
+        }
+
+        /* --- 生成障礙物輔助函數 --- */
+        function spawnObstacle() {
+            const types = ['circle', 'triangle', 'chaser'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            const radius = Math.random() * 10 + 12;
+            
+            obstacles.push({
+                type: type,
+                x: Math.random() * (width - 40) + 20,
+                y: -30,
+                radius: radius,
+                speed: Math.random() * 2 + 3,
+                rotation: 0,
+                rotSpeed: (Math.random() - 0.5) * 0.1,
+                color: type === 'chaser' ? '#f43f5e' : '#ef4444'
+            });
+        }
+
+        /* --- 觸發道具邏輯 --- */
+        function applyPowerup(type) {
+            const pInfo = document.getElementById('hud-powerup');
+            pInfo.classList.remove('hidden');
+
+            if (type === 'shield') {
+                player.hasShield = true;
+                pInfo.innerText = "藍色護盾防禦啟動";
+            } else if (type === 'slowmo') {
+                slowMoTimer = 5.0;
+                pInfo.innerText = "時光減速領域 5 秒";
+            } else if (type === 'magnet') {
+                magnetTimer = 6.0;
+                pInfo.innerText = "超強磁石引力 6 秒";
+            } else if (type === 'bomb') {
+                triggerScreenShake();
+                obstacles.forEach(o => createExplosion(o.x, o.y, '#ff4444', 12));
+                obstacles = [];
+                pInfo.innerText = "霓虹炸彈清空全畫面";
+            }
+
+            setTimeout(() => {
+                pInfo.classList.add('hidden');
+            }, 2500);
+        }
+
+        /* --- 震動畫面效果 --- */
+        function triggerScreenShake() {
+            const container = document.getElementById('game-container');
+            container.classList.remove('shake');
+            void container.offsetWidth; // 強制重繪
+            container.classList.add('shake');
+        }
+
+        /* --- 生成粒子特效 --- */
+        function createExplosion(x, y, color, count = 12) {
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 4.5 + 1;
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    color: color,
+                    alpha: 1.0,
+                    decay: Math.random() * 0.035 + 0.02,
+                    size: Math.random() * 3 + 2
+                });
+            }
+        }
+
+        /* --- CANVAS 畫面渲染引擎 --- */
+        function render() {
+            // 背景清理
+            ctx.fillStyle = '#030308';
+            ctx.fillRect(0, 0, width, height);
+
+            // 渲染背景星空
+            stars.forEach(s => {
+                ctx.fillStyle = `rgba(255, 255, 255, ${s.alpha})`;
+                ctx.fillRect(s.x, s.y, s.size, s.size);
+            });
+
+            // 渲染霓虹動態背景網格
+            ctx.strokeStyle = 'rgba(6, 182, 212, 0.06)';
+            ctx.lineWidth = 1;
+            const gridOffset = (gameTime * 45) % 40;
+            for (let x = 0; x < width; x += 40) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            for (let y = gridOffset; y < height; y += 40) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+
+            // 渲染寶石
+            gems.forEach(g => {
+                ctx.save();
+                ctx.shadowColor = '#facc15';
+                ctx.shadowBlur = 10;
+                ctx.fillStyle = '#facc15';
+                ctx.beginPath();
+                ctx.arc(g.x, g.y, g.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // 渲染戰術道具
+            powerups.forEach(p => {
+                ctx.save();
+                let pColor = '#3b82f6';
+                if (p.type === 'slowmo') pColor = '#a855f7';
+                if (p.type === 'magnet') pColor = '#eab308';
+                if (p.type === 'bomb') pColor = '#ef4444';
+
+                ctx.shadowColor = pColor;
+                ctx.shadowBlur = 14;
+                ctx.fillStyle = pColor;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 道具標示字母
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 10px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const labels = { shield: 'S', slowmo: 'T', magnet: 'M', bomb: 'B' };
+                ctx.fillText(labels[p.type] || 'P', p.x, p.y);
+                ctx.restore();
+            });
+
+            // 渲染障礙物
+            obstacles.forEach(o => {
+                ctx.save();
+                ctx.translate(o.x, o.y);
+                ctx.rotate(o.rotation);
+                ctx.shadowColor = o.color;
+                ctx.shadowBlur = 12;
+                ctx.strokeStyle = o.color;
+                ctx.lineWidth = 3;
+
+                if (o.type === 'circle') {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, o.radius, 0, Math.PI * 2);
+                    ctx.stroke();
+                } else if (o.type === 'triangle') {
+                    ctx.beginPath();
+                    ctx.moveTo(0, -o.radius);
+                    ctx.lineTo(o.radius, o.radius);
+                    ctx.lineTo(-o.radius, o.radius);
+                    ctx.closePath();
+                    ctx.stroke();
+                } else if (o.type === 'chaser') {
+                    // 追蹤敵機特殊繪製
+                    ctx.fillStyle = '#f43f5e';
+                    ctx.beginPath();
+                    ctx.moveTo(0, o.radius);
+                    ctx.lineTo(o.radius, -o.radius);
+                    ctx.lineTo(0, -o.radius / 2);
+                    ctx.lineTo(-o.radius, -o.radius);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+                ctx.restore();
+            });
+
+            // 渲染粒子
+            particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // 渲染玩家飛船
+            if (gameState === 'PLAYING') {
+                ctx.save();
+                ctx.translate(player.x, player.y);
+
+                // Dash 或護盾光芒特效
+                if (player.isDashing) {
+                    ctx.shadowColor = '#ec4899';
+                    ctx.shadowBlur = 22;
+                    ctx.strokeStyle = '#ec4899';
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, player.radius + 8, 0, Math.PI * 2);
+                    ctx.stroke();
+                } else if (player.hasShield) {
+                    ctx.shadowColor = '#06b6d4';
+                    ctx.shadowBlur = 16;
+                    ctx.strokeStyle = '#06b6d4';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, player.radius + 6, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                // 霓虹飛船本體繪製
+                ctx.shadowColor = activeShip.color;
+                ctx.shadowBlur = 16;
+                ctx.fillStyle = activeShip.color;
+
+                ctx.beginPath();
+                ctx.moveTo(0, -player.radius - 4);
+                ctx.lineTo(player.radius, player.radius);
+                ctx.lineTo(0, player.radius - 5);
+                ctx.lineTo(-player.radius, player.radius);
+                ctx.closePath();
+                ctx.fill();
+
+                // 尾光噴射點
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(0, player.radius - 2, 3.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        /* --- 遊戲狀態流程 --- */
+        function startGame() {
+            gameState = 'PLAYING';
+            score = 0;
+            currentGemsCount = 0;
+            comboCount = 0;
+            maxCombo = 1;
+            wave = 1;
+            gameTime = 0;
+            totalRuns++;
+
+            player.x = width / 2;
+            player.y = height * 0.78;
+            player.targetX = player.x;
+            player.targetY = player.y;
+            player.hasShield = false;
+            player.dashCooldown = 0;
+            player.isDashing = false;
+            player.storedSkill = null;
+
+            obstacles = [];
+            gems = [];
+            powerups = [];
+            particles = [];
+
+            document.getElementById('menu-screen').classList.add('hidden');
+            document.getElementById('pause-modal').classList.add('hidden');
+            document.getElementById('gameover-modal').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            document.getElementById('touch-controls').classList.remove('hidden');
+
+            updateHUD();
+            updateSkillButtonUI();
+        }
+
+        function triggerGameOver() {
+            gameState = 'GAMEOVER';
+            audio.playExplosion();
+            triggerScreenShake();
+            createExplosion(player.x, player.y, activeShip.color, 32);
+
+            if (score > highScore) highScore = score;
+            totalGems += currentGemsCount;
+            saveProgress();
+
+            document.getElementById('go-score').innerText = score;
+            document.getElementById('go-high').innerText = highScore;
+            document.getElementById('go-gems').innerText = `+${currentGemsCount}`;
+            document.getElementById('go-combo').innerText = `${maxCombo}x`;
+            document.getElementById('go-wave').innerText = `第 ${wave} 波`;
+
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('touch-controls').classList.add('hidden');
+            document.getElementById('gameover-modal').classList.remove('hidden');
+            document.getElementById('gameover-modal').classList.add('flex');
+        }
+
+        function updateHUD() {
+            document.getElementById('hud-gems').innerText = currentGemsCount;
+            document.getElementById('hud-level').innerText = `第 ${wave} 波`;
+            
+            const multiplier = Math.min(Math.floor(comboCount / 5) + 1, 5);
+            const comboEl = document.getElementById('hud-combo');
+            comboEl.innerText = `${multiplier}x 連擊`;
+            if (multiplier > 1) {
+                comboEl.classList.remove('bg-pink-500/20', 'text-pink-400');
+                comboEl.classList.add('bg-yellow-500/30', 'text-yellow-300');
+            } else {
+                comboEl.classList.remove('bg-yellow-500/30', 'text-yellow-300');
+                comboEl.classList.add('bg-pink-500/20', 'text-pink-400');
+            }
+        }
+
+        function updateMenuUI() {
+            document.getElementById('menu-high-score').innerText = highScore;
+            document.getElementById('menu-total-gems').innerText = totalGems;
+
+            document.getElementById('ship-preview-name').innerText = activeShip.name;
+            document.getElementById('ship-preview').innerHTML = `
+                <svg width="48" height="48" viewBox="0 0 40 40">
+                    <polygon points="20,4 36,36 20,28 4,36" fill="${activeShip.color}" />
+                    <circle cx="20" cy="26" r="3" fill="#ffffff" />
+                </svg>
+            `;
+
+            document.getElementById('stat-speed').innerText = `${Math.round(activeShip.speed * 100)}%`;
+            document.getElementById('stat-magnet').innerText = `${activeShip.magnet.toFixed(1)}x`;
+            document.getElementById('stat-shield').innerText = `${activeShip.shieldTime} 秒`;
+        }
+
+        /* --- 戰機軍備庫渲染與解鎖系統 --- */
+        function renderHangarList() {
+            const container = document.getElementById('ships-list');
+            container.innerHTML = '';
+
+            SHIPS_DATA.forEach(s => {
+                const isSelected = s.id === activeShip.id;
+                const card = document.createElement('div');
+                card.className = `p-3 rounded-xl border flex items-center justify-between transition-all ${
+                    isSelected ? 'bg-cyan-950/40 border-cyan-400' : 'bg-black/50 border-slate-800'
+                }`;
+
+                card.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 flex items-center justify-center">
+                            <svg width="32" height="32" viewBox="0 0 40 40">
+                                <polygon points="20,4 36,36 20,28 4,36" fill="${s.color}" />
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="text-xs font-bold text-white">${s.name}</div>
+                            <div class="text-[10px] text-slate-400">${s.desc}</div>
+                        </div>
+                    </div>
+                    <div>
+                        ${
+                            s.unlocked ? (
+                                isSelected ? 
+                                `<span class="text-[11px] font-black text-cyan-400 px-3 py-1 rounded bg-cyan-500/20 border border-cyan-500/40">已裝備</span>` :
+                                `<button onclick="selectShip('${s.id}')" class="text-[11px] font-bold text-white bg-slate-700 px-3 py-1 rounded active:scale-95">裝備</button>`
+                            ) : (
+                                `<button onclick="unlockShip('${s.id}')" class="text-[11px] font-bold text-black bg-yellow-400 px-3 py-1 rounded active:scale-95 flex items-center gap-1">
+                                    <i class="fa-solid fa-gem text-[10px]"></i> ${s.price}
+                                 </button>`
+                            )
+                        }
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        window.selectShip = function(id) {
+            const found = SHIPS_DATA.find(s => s.id === id);
+            if (found && found.unlocked) {
+                activeShip = found;
+                saveProgress();
+                updateMenuUI();
+                renderHangarList();
+            }
+        };
+
+        window.unlockShip = function(id) {
+            const found = SHIPS_DATA.find(s => s.id === id);
+            if (found && totalGems >= found.price) {
+                totalGems -= found.price;
+                found.unlocked = true;
+                activeShip = found;
+                saveProgress();
+                updateMenuUI();
+                renderHangarList();
+            } else {
+                alert('能量寶石數量不足！請再接再厲累積寶石。');
+            }
+        };
+
+        /* --- 成就記錄渲染 --- */
+        function renderAchievementsList() {
+            const container = document.getElementById('achievements-list');
+            container.innerHTML = '';
+
+            ACHIEVEMENTS_DATA.forEach(ach => {
+                let currentVal = 0;
+                if (ach.key === 'runs') currentVal = totalRuns;
+                if (ach.key === 'gems') currentVal = totalGems;
+                if (ach.key === 'score') currentVal = highScore;
+                if (ach.key === 'combo') currentVal = maxCombo;
+
+                const isCompleted = currentVal >= ach.target;
+
+                const card = document.createElement('div');
+                card.className = `p-3 rounded-xl border flex items-center justify-between ${
+                    isCompleted ? 'bg-yellow-500/10 border-yellow-500/40' : 'bg-black/40 border-slate-800 opacity-60'
+                }`;
+
+                card.innerHTML = `
+                    <div>
+                        <div class="font-bold ${isCompleted ? 'text-yellow-400' : 'text-slate-300'} text-xs">
+                            ${ach.title} ${isCompleted ? '<i class="fa-solid fa-circle-check text-yellow-400 ml-1"></i>' : ''}
+                        </div>
+                        <div class="text-[10px] text-slate-400 mt-0.5">${ach.desc}</div>
+                    </div>
+                    <div class="text-right text-[11px] font-bold ${isCompleted ? 'text-yellow-400' : 'text-slate-500'}">
+                        ${Math.min(currentVal, ach.target)} / ${ach.target}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        /* --- UI 事件監聽連結 --- */
+        document.getElementById('btn-start').addEventListener('click', startGame);
+        document.getElementById('btn-retry').addEventListener('click', startGame);
+
+        document.getElementById('btn-pause').addEventListener('click', () => {
+            if (gameState === 'PLAYING') {
+                gameState = 'PAUSED';
+                document.getElementById('pause-modal').classList.remove('hidden');
+                document.getElementById('pause-modal').classList.add('flex');
+            }
+        });
+
+        document.getElementById('btn-resume').addEventListener('click', () => {
+            gameState = 'PLAYING';
+            document.getElementById('pause-modal').classList.add('hidden');
+        });
+
+        document.getElementById('btn-restart-pause').addEventListener('click', startGame);
+
+        document.getElementById('btn-quit-pause').addEventListener('click', () => {
+            gameState = 'MENU';
+            document.getElementById('pause-modal').classList.add('hidden');
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('touch-controls').classList.add('hidden');
+            document.getElementById('menu-screen').classList.remove('hidden');
+            updateMenuUI();
+        });
+
+        document.getElementById('btn-go-menu').addEventListener('click', () => {
+            gameState = 'MENU';
+            document.getElementById('gameover-modal').classList.add('hidden');
+            document.getElementById('menu-screen').classList.remove('hidden');
+            updateMenuUI();
+        });
+
+        // 軍備庫彈窗
+        document.getElementById('btn-open-hangar').addEventListener('click', () => {
+            renderHangarList();
+            document.getElementById('hangar-modal').classList.remove('hidden');
+            document.getElementById('hangar-modal').classList.add('flex');
+        });
+
+        document.getElementById('btn-close-hangar').addEventListener('click', () => {
+            document.getElementById('hangar-modal').classList.add('hidden');
+        });
+
+        // 規則說明彈窗
+        document.getElementById('btn-rules').addEventListener('click', () => {
+            document.getElementById('rules-modal').classList.remove('hidden');
+            document.getElementById('rules-modal').classList.add('flex');
+        });
+        document.getElementById('btn-close-rules').addEventListener('click', () => {
+            document.getElementById('rules-modal').classList.add('hidden');
+        });
+        document.getElementById('btn-understand-rules').addEventListener('click', () => {
+            document.getElementById('rules-modal').classList.add('hidden');
+        });
+
+        // 成就彈窗
+        document.getElementById('btn-achievements').addEventListener('click', () => {
+            renderAchievementsList();
+            document.getElementById('achievements-modal').classList.remove('hidden');
+            document.getElementById('achievements-modal').classList.add('flex');
+        });
+        document.getElementById('btn-close-achievements').addEventListener('click', () => {
+            document.getElementById('achievements-modal').classList.add('hidden');
+        });
+        document.getElementById('btn-close-achievements-2').addEventListener('click', () => {
+            document.getElementById('achievements-modal').classList.add('hidden');
+        });
+
+        // 音效開關切換
+        document.getElementById('btn-audio-toggle').addEventListener('click', () => {
+            audio.init();
+            audio.muted = !audio.muted;
+            const icon = document.getElementById('audio-icon');
+            if (audio.muted) {
+                icon.className = 'fa-solid fa-volume-xmark text-red-400';
+            } else {
+                icon.className = 'fa-solid fa-volume-high text-cyan-400';
+            }
+        });
+
+        /* --- 遊戲程式啟動點 --- */
+        window.onload = function() {
+            loadSavedProgress();
+            requestAnimationFrame(gameLoop);
+        };
+    </script>
+</body>
+</html>
